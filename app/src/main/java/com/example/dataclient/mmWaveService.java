@@ -4,6 +4,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 
+import android.icu.util.Output;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.IBinder;
@@ -14,6 +15,7 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.DataInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
@@ -23,17 +25,24 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Calendar;
 import java.lang.Math; //abs()
+
+import android.content.res.AssetFileDescriptor;
+
+import org.tensorflow.lite.Interpreter;
 
 import java.net.Socket;//Socket()
 import java.net.InetAddress;
@@ -89,18 +98,18 @@ public class mmWaveService extends Service {
 
     private int number;
     private int numbertemp = -1;
-    private int count =0;
+    private int count = 0;
     private byte[] msg;
     private byte[] nowFramePointCloud;
 
     private ReadPktThread pktThread;
     private ReadLogThread logThread;
 
-    //連線參數
     private Thread socketClientThread;
     private Socket clientSocket;
     private String tmp;
-    private boolean isParsing = false;
+    private boolean isParsing = false,Sendsignal = true;
+
 
     long startTime = 0;
     long endTime = 0;
@@ -119,10 +128,10 @@ public class mmWaveService extends Service {
 
 
     final int SIZE_SAMPLE = 512;
-
+    float[][][] stack_pixel = new float[2][12][50 * 30];
     final int ENERGY_BUF_SIZE = 50;
     final int BR_OUT_BUF_SIZE = 10;
-
+    private Interpreter tflite;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -136,9 +145,16 @@ public class mmWaveService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-
         Log.d(ClassName, "Start mmWaveService");
+//        Log.d(ClassName,"preparing Interpreter...");
+//        try {
+//            tflite = new Interpreter(loadModelFile("model"));
+//            Log.d(ClassName,"created Interpreter!");
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
         mContext = mmWaveService.this;
+
 
         try {
             socketClientThread = new Thread(Client);
@@ -171,7 +187,7 @@ public class mmWaveService extends Service {
             InetAddress serverIp;
             while (true) {
                 try {
-                    serverIp = InetAddress.getByName("192.168.0.105");
+                    serverIp = InetAddress.getByName("10.1.1.40"); // 10.1.1.38 // 192.168.0.105
                     int serverPort = 5050;
                     clientSocket = new Socket(serverIp, serverPort);
                     break;
@@ -179,18 +195,30 @@ public class mmWaveService extends Service {
                     Log.d(ClassName, "SocketService:" + e.getMessage());
                 }
             }
+            Log.d(ClassName,"create Interpreter");
+            try {
+                tflite = new Interpreter(loadModelFile("model"));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             if (clientSocket.isConnected()) {
                 Log.d(ClassName, "conencted server!!!");
                 while (clientSocket.isConnected()) {
-                    if(isParsing) {
+
+                    if (true) {
                         try {
                             DataOutputStream bw = new DataOutputStream(new BufferedOutputStream(clientSocket.getOutputStream()));
-                            if (numbertemp != number) {
-                                bw.write(msg);
+//                            if (numbertemp != number && msg != null) {
+//                                bw.write(msg);
+//                                bw.flush();
+//                                Log.d(ClassName, "send_Frame:" + number);
+//                            }
+//                            numbertemp = number;
+                            if (Sendsignal != true){
+                                bw.writeUTF(tmp);
                                 bw.flush();
-                                Log.d(ClassName, "send:" + msg.length);
+                                Sendsignal = true;
                             }
-                            numbertemp = number;
                         } catch (Exception e) {
                             Log.d(ClassName, "Socketsend:" + e.getMessage());
                             continue;
@@ -268,7 +296,6 @@ public class mmWaveService extends Service {
 
                 BufferedReader br = new
                         BufferedReader(new InputStreamReader(p.getInputStream()));
-
                 while (true) {
                     line = br.readLine();
                     if (line == null)
@@ -287,6 +314,7 @@ public class mmWaveService extends Service {
                     byte[] tempData = new byte[numRead];
                     System.arraycopy(byteData, 0, tempData, 0, numRead);
 
+//                    Log.d(ClassName, "Data length:"+tempData.length);
 
                     for (byte b : tempData) {
                         dataList.add(b);
@@ -299,7 +327,7 @@ public class mmWaveService extends Service {
 
                         if (headerCount == delimiter.length) {
                             dataList = dataList.subList(0, dataList.size() - delimiter.length);
-//                            Log.d(ClassName, " update dataList "+ count);
+                            Log.d(ClassName, " call parser!");
                             parseTLV(listByteToByteArray(dataList));
                             isParsing = true;
                             dataList = new ArrayList<Byte>(Arrays.asList(delimiter));
@@ -400,10 +428,9 @@ public class mmWaveService extends Service {
 
 
                 while (true) {
-
                     Date d = new Date(System.currentTimeMillis());
                     String logtime = mSimpleDateFormat.format(d);
-
+//                    Log.d(ClassName, "Time: "+logtime);
                     synchronized (lock) {
                         isRadarPending = true;
                     }
@@ -499,8 +526,8 @@ public class mmWaveService extends Service {
         int packetLength = ByteArray2Int(Arrays.copyOfRange(fileBytes, NIBBLE * 5, NIBBLE * 6));
         int frameNumber = ByteArray2Int(Arrays.copyOfRange(fileBytes, NIBBLE * 6, NIBBLE * 7));
 
-
-
+        number = frameNumber;
+        Log.d(ClassName,"Framenumber: "+number);
 
         if (FrameLengthReal != packetLength)
             return;
@@ -522,8 +549,7 @@ public class mmWaveService extends Service {
             Log.d(ClassName, "Package Exception: " + e);
             return;
         }
-        number = frameNumber;
-        Log.d(ClassName,"Framenumber: "+number);
+
 ///////////////////////////////////Parser////////////////////////////
         for (int i = 0; i < numTLV; i++) {
             int prefixLength = PACKAGE_HEADER_LENGTH + TLV_HEADER_LENGTH + sumArrayRange(TLVLength, 0, i - 1);
@@ -535,8 +561,36 @@ public class mmWaveService extends Service {
                         0, TLVPoints * TLV_POINT_CLOUD_LENGTH);
                 nowFramePointCloud = bytesPointCloud;
                 msg = nowFramePointCloud;
-            }
+/////////////////////////////////Interpreter////////////////////////////////////
+                final float[][] pointcloud = BytesPoint2Int(msg);
+//                Log.d(ClassName,"call pointcloud!");
+                if (pointcloud != null) {
+                    float[][] pixel = voxalize(pointcloud[0], pointcloud[1], pointcloud[2], 50, 30, 50);
+                    stack_pixel = stackSlid_pixel(pixel, stack_pixel, count);
+//                    Log.d(ClassName,"call stack!");
+                    count += 1;
+                    if (count > 10 && count % 11 == 1) {
 //
+                        float[] input1 = flatteninput(stack_pixel[0]);
+                        float[] input2 = flatteninput(stack_pixel[1]);
+
+                        ByteBuffer byinput1 = flBufTobyteBuf(input1, input1.length);
+                        ByteBuffer byinput2 = flBufTobyteBuf(input2, input2.length);
+                        Object[] inputs = {byinput1, byinput2};
+//                        Log.d(ClassName,"call input!");
+                        Map<Integer, Object> outputs = new HashMap<>();
+                        final float[][] output_0 = new float[1][7];
+                        outputs.put(0, output_0);
+//
+                        tflite.runForMultipleInputsOutputs(inputs, outputs);
+                        tmp = FindProbIndex(output_0);
+                        Sendsignal = false;
+                        Log.d(ClassName,"FrameNumber:"+String.valueOf(frameNumber)+", PredictionResult:"+ FindProbIndex(output_0));
+                    }
+                }
+//////////////////////////////////////////////////////////////////////////////////////////////////
+            }
+
 //            if (TLVType[i] == 0x07 && TLVLength[i] >= 48) {
 //                numTLVItem = (TLVLength[i] - TLV_HEADER_LENGTH) / TLV_TARGET_LIST_LENGTH;
 //
@@ -634,6 +688,34 @@ public class mmWaveService extends Service {
 ///////////////////////////////////Parser////////////////////////////
     }
 
+    private float[][] BytesPoint2Int(byte[] fileBytes) {
+        int Headerlength = 0;
+        int PointCloudlenght = 20;
+        int point_count = fileBytes.length / 20;
+        float[][] point_cloud = new float[4][point_count];
+
+        for (int i = 0; i < point_count; i++) {
+            byte[] Byterange = Arrays.copyOfRange(fileBytes, PointCloudlenght * i + Headerlength, PointCloudlenght * i + Headerlength + 4);
+            float range = ByteBuffer.wrap(Byterange).order(ByteOrder.LITTLE_ENDIAN).getFloat();
+
+            byte[] Byteazimuth = Arrays.copyOfRange(fileBytes, PointCloudlenght * i + Headerlength + 4, PointCloudlenght * i + Headerlength + 8);
+            float azimuth = ByteBuffer.wrap(Byteazimuth).order(ByteOrder.LITTLE_ENDIAN).getFloat();
+
+            byte[] Byteelevation = Arrays.copyOfRange(fileBytes, PointCloudlenght * i + Headerlength + 8, PointCloudlenght * i + Headerlength + 12);
+            float elevation = ByteBuffer.wrap(Byteelevation).order(ByteOrder.LITTLE_ENDIAN).getFloat();
+
+            byte[] Bytedoppler = Arrays.copyOfRange(fileBytes, PointCloudlenght * i + Headerlength + 12, PointCloudlenght * i + Headerlength + 16);
+            float doppler = ByteBuffer.wrap(Bytedoppler).order(ByteOrder.LITTLE_ENDIAN).getFloat();
+
+            point_cloud[0][i] = (float) (range * Math.cos(elevation) * Math.sin(azimuth));
+            point_cloud[1][i] = (float) (range * Math.cos(elevation) * Math.cos(azimuth));
+            point_cloud[2][i] = (float) (range * Math.sin(elevation));
+        }
+        point_cloud[3][0] = 0;
+
+        return point_cloud;
+    }
+
     private int sumArray(int[] array) {
         int sum = 0;
 
@@ -694,7 +776,15 @@ public class mmWaveService extends Service {
         }
         return dataByte;
     }
-
+    ByteBuffer flBufTobyteBuf ( float flbuf[], int len){
+        ByteBuffer buffer = ByteBuffer.allocateDirect(len * 4);
+        buffer.order(ByteOrder.nativeOrder());
+        buffer.rewind();
+        for (int i = 0; i < len; i++) {
+            buffer.putFloat(flbuf[i]);
+        }
+        return buffer;
+    }
     public static int ByteArray2Int(byte[] b) {
         int MASK = 0xFF;
         int result = 0;
@@ -714,6 +804,7 @@ public class mmWaveService extends Service {
         //result = result + ((b[3] & MASK) << 24);
         return result;
     }
+
     public static byte[] addBytes(byte[] data1, byte[] data2) {
         byte[] data3 = new byte[data1.length + data2.length];
         System.arraycopy(data1, 0, data3, 0, data1.length);
@@ -721,6 +812,134 @@ public class mmWaveService extends Service {
         return data3;
 
     }
+
+    private MappedByteBuffer loadModelFile(String model) throws IOException {
+        AssetFileDescriptor fileDescriptor = getApplicationContext().getAssets().openFd(model + ".tflite");
+        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+        FileChannel fileChannel = inputStream.getChannel();
+        long startOffset = fileDescriptor.getStartOffset();
+        long declaredLength = fileDescriptor.getDeclaredLength();
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+    }
+
+    float[] flatteninput(float stack_pixel[][]) {
+        float[] input = new float[12 * 50 * 30];
+        for (int i = 0; i < 12; i++) {
+            for (int j = 0; j < (50 * 30); j++) {
+                input[(i * 50 * 30) + j] = stack_pixel[i][j];
+            }
+        }
+        return input;
+    }
+    float FindProb ( float probArray[][]){
+        float temp = probArray[0][0];
+        int key = 0;
+
+        for (int count = 1; count < 7; count++) {
+            if (temp < probArray[0][count]) {
+                temp = probArray[0][count];
+                key = count;
+            }
+        }
+        return probArray[0][key];
+    }
+    String FindProbIndex(float probArray[][]){
+        String[] classes = {"st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "get_up", "other"};
+        float temp = probArray[0][0];
+        int key=0;
+
+        for(int count=1;count<7;count++){
+            if(temp<probArray[0][count]){
+                temp=probArray[0][count];
+                key=count;
+            }
+        }
+        System.out.println(probArray[0][key]);
+        return classes[key];
+    }
+    float[][][] stackSlid_pixel(float pixel[][], float stack_pixel[][][], int frame_count) {
+        if (frame_count < 12) {
+            stack_pixel[0][frame_count] = pixel[0];
+            stack_pixel[1][frame_count] = pixel[1];
+        } else {
+            float[][][] new_stack_pixel = new float[2][12][50 * 30];
+            for (int i = 0; i < 11; i++) {
+                new_stack_pixel[0][i] = stack_pixel[0][i + 1];  //third dim is for [X*Y points]
+                new_stack_pixel[1][i] = stack_pixel[1][i + 1];
+            }
+            new_stack_pixel[0][11] = pixel[0];
+            new_stack_pixel[1][11] = pixel[1];
+
+            stack_pixel = new_stack_pixel;
+        }
+
+        return stack_pixel;
+    }
+
+    float[][] voxalize(float x[], float y[], float z[], int pointX, int pointY, int pointZ) {
+        int len = x.length;
+
+//        float [] pixel1 = new float[pointX * pointY];
+//        float [] pixel2 = new float[pointY * pointZ];
+        float[][] pixel = new float[2][pointX * pointZ];
+
+        int x_min = -3;
+        int x_max = 3;
+
+        int y_min = 0;
+        double y_max = 2.5;
+
+        int z_max = 3;
+        int z_min = -3;
+
+
+        double x_res = (double) (x_max - x_min) / (pointX);
+        double y_res = (double) (y_max - y_min) / pointY;
+        double z_res = (double) (z_max - z_min) / pointZ;
+
+
+        for (int i = 0; i < len; i++) {
+
+            double x_pix = Math.floor((x[i] - (double) (x_min)) / x_res);
+            double y_pix = Math.floor((y[i] - (double) (y_min)) / y_res);
+            double z_pix = Math.floor((z[i] - (double) (z_min)) / z_res);
+
+
+            if (x_pix > pointX) {
+                continue;
+            }
+            if (y_pix > pointY) {
+                continue;
+            }
+            if (z_pix > pointZ) {
+                continue;
+            }
+
+            if (x_pix == pointX) {
+                x_pix = pointX - 1;
+            }
+            if (y_pix == pointY) {
+                y_pix = pointY - 1;
+            }
+            if (z_pix == pointZ) {
+                z_pix = pointZ - 1;
+            }
+
+            int countx = (int) ((y_pix) * (pointX) + x_pix);
+            int county = (int) ((y_pix) * (pointZ) + z_pix);
+
+            if (countx > 0 && county > 0) {
+                pixel[0][countx] += 1;
+                pixel[1][county] += 1;
+            } else {
+                continue;
+            }
+
+
+        }
+        return pixel;
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
