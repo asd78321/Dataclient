@@ -1,28 +1,27 @@
 package com.example.dataclient;
 
+import android.annotation.SuppressLint;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-
-import android.icu.util.Output;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
+import android.content.res.AssetFileDescriptor;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.os.PowerManager;
 import android.util.Log;
 
+import org.tensorflow.lite.Interpreter;
+
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.DataOutputStream;
-import java.io.File;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
@@ -30,25 +29,14 @@ import java.nio.channels.FileChannel;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.ArrayDeque;
-import java.util.Iterator;
-import java.util.Calendar;
-import java.lang.Math; //abs()
 
-import android.content.res.AssetFileDescriptor;
-
-import org.tensorflow.lite.Interpreter;
-
-import java.net.Socket;//Socket()
-import java.net.InetAddress;
-
-import android.content.IntentFilter;
-import android.os.Bundle;
+//LED controller
 
 
 public class mmWaveService extends Service {
@@ -108,7 +96,7 @@ public class mmWaveService extends Service {
     private Thread socketClientThread;
     private Socket clientSocket;
     private String tmp;
-    private boolean isParsing = false,Sendsignal = true;
+    private boolean isParsing = false, Sendsignal = true, flashsignal = true;
 
 
     long startTime = 0;
@@ -133,6 +121,14 @@ public class mmWaveService extends Service {
     final int BR_OUT_BUF_SIZE = 10;
     private Interpreter tflite;
 
+    //LED controller
+    private static final String TAG = "LedSample";
+    private static final int LED_OFF = 0;
+    private static final int LED_FLASH_ON = 1;
+    private static final int LED_FLASH_OFF = 2;
+    public final static int LED_DELAY_TIME = 300;
+
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -156,13 +152,13 @@ public class mmWaveService extends Service {
         mContext = mmWaveService.this;
 
 
-        try {
-            socketClientThread = new Thread(Client);
-            socketClientThread.start();
-            Log.d(ClassName, "Start SocketThread!!");
-        } catch (Exception e) {
-            Log.d(ClassName, "ConnectService:" + e.getMessage());
-        }
+//        try {
+//            socketClientThread = new Thread(Client);
+//            socketClientThread.start();
+//            Log.d(ClassName, "Start SocketThread!!");
+//        } catch (Exception e) {
+//            Log.d(ClassName, "ConnectService:" + e.getMessage());
+//        }
 
 
         if (logThread == null) {
@@ -195,30 +191,51 @@ public class mmWaveService extends Service {
                     Log.d(ClassName, "SocketService:" + e.getMessage());
                 }
             }
-            Log.d(ClassName,"create Interpreter");
+            Log.d(ClassName, "create Interpreter");
             try {
                 tflite = new Interpreter(loadModelFile("model"));
+
+                Log.d(ClassName, "flash");
             } catch (IOException e) {
                 e.printStackTrace();
             }
             if (clientSocket.isConnected()) {
                 Log.d(ClassName, "conencted server!!!");
+                ledHandler.removeMessages(LED_FLASH_ON);
+                ledHandler.removeMessages(LED_FLASH_OFF);
+                ledHandler.sendEmptyMessage(LED_FLASH_ON);
                 while (clientSocket.isConnected()) {
 
                     if (true) {
                         try {
                             DataOutputStream bw = new DataOutputStream(new BufferedOutputStream(clientSocket.getOutputStream()));
-//                            if (numbertemp != number && msg != null) {
-//                                bw.write(msg);
-//                                bw.flush();
-//                                Log.d(ClassName, "send_Frame:" + number);
-//                            }
-//                            numbertemp = number;
-                            if (Sendsignal != true){
+
+                            if (Sendsignal != true) {
                                 bw.writeUTF(tmp);
                                 bw.flush();
                                 Sendsignal = true;
+                                if (flashsignal) {
+                                    ledHandler.removeMessages(LED_FLASH_ON);
+                                    ledHandler.removeMessages(LED_FLASH_OFF);
+                                    ledHandler.sendEmptyMessage(LED_OFF);
+                                    flashsignal = false;
+                                }
+
                             }
+//                            if (number % 100 == 0) {
+//                                //flash off
+//                                if (flashsignal) {
+//                                    ledHandler.removeMessages(LED_FLASH_ON);
+//                                    ledHandler.removeMessages(LED_FLASH_OFF);
+//                                    ledHandler.sendEmptyMessage(LED_FLASH_ON);
+//                                } else {
+                            //        ledHandler.removeMessages(LED_FLASH_ON);
+//                                    ledHandler.removeMessages(LED_FLASH_OFF);
+//                                    ledHandler.sendEmptyMessage(LED_OFF);
+//                                    flashsignal = false;
+//                                }
+//                            }
+
                         } catch (Exception e) {
                             Log.d(ClassName, "Socketsend:" + e.getMessage());
                             continue;
@@ -285,10 +302,11 @@ public class mmWaveService extends Service {
             Byte[] delimiter = {(byte) 0x02, (byte) 0x01, (byte) 0x04, (byte) 0x03, (byte) 0x06, (byte) 0x05, (byte) 0x08, (byte) 0x07};
             byte[] byteData;
             int numRead = -1;
-
+            long FlashTime = 0,nowTime = 0;
             String line;
             String uart_test = "/system/bin/uart_test";
 
+            nowTime = System.currentTimeMillis();
             try {
                 Process p = Runtime.getRuntime().exec(uart_test);
                 Log.d(ClassName, "execute uart_test(pkt)");
@@ -324,11 +342,26 @@ public class mmWaveService extends Service {
                         } else {
                             headerCount = 0;
                         }
-
                         if (headerCount == delimiter.length) {
                             dataList = dataList.subList(0, dataList.size() - delimiter.length);
                             Log.d(ClassName, " call parser!");
                             parseTLV(listByteToByteArray(dataList));
+                            FlashTime = System.currentTimeMillis();
+                            if(FlashTime-nowTime >=10000){
+                                Log.d(ClassName,"Flash on");
+                                nowTime = System.currentTimeMillis();
+                                ledHandler.removeMessages(LED_FLASH_ON);
+//                                ledHandler.removeMessages(LED_FLASH_OFF);
+                                ledHandler.sendEmptyMessage(LED_FLASH_ON);
+                            }
+//                            if(FlashTime - nowTime >= 5000){
+////                                nowTime = System.currentTimeMillis();
+//                                Log.d(ClassName,"Flash off");
+//                                ledHandler.removeMessages(LED_FLASH_ON);
+//                                ledHandler.removeMessages(LED_FLASH_OFF);
+//                                ledHandler.sendEmptyMessage(LED_OFF);
+//                            }
+
                             isParsing = true;
                             dataList = new ArrayList<Byte>(Arrays.asList(delimiter));
                             headerCount = 0;
@@ -527,7 +560,7 @@ public class mmWaveService extends Service {
         int frameNumber = ByteArray2Int(Arrays.copyOfRange(fileBytes, NIBBLE * 6, NIBBLE * 7));
 
         number = frameNumber;
-        Log.d(ClassName,"Framenumber: "+number);
+        Log.d(ClassName, "Framenumber: " + number);
 
         if (FrameLengthReal != packetLength)
             return;
@@ -562,32 +595,32 @@ public class mmWaveService extends Service {
                 nowFramePointCloud = bytesPointCloud;
                 msg = nowFramePointCloud;
 /////////////////////////////////Interpreter////////////////////////////////////
-                final float[][] pointcloud = BytesPoint2Int(msg);
-//                Log.d(ClassName,"call pointcloud!");
-                if (pointcloud != null) {
-                    float[][] pixel = voxalize(pointcloud[0], pointcloud[1], pointcloud[2], 50, 30, 50);
-                    stack_pixel = stackSlid_pixel(pixel, stack_pixel, count);
-//                    Log.d(ClassName,"call stack!");
-                    count += 1;
-                    if (count > 10 && count % 11 == 1) {
+//                final float[][] pointcloud = BytesPoint2Int(msg);
+////                Log.d(ClassName,"call pointcloud!");
+//                if (pointcloud != null) {
+//                    float[][] pixel = voxalize(pointcloud[0], pointcloud[1], pointcloud[2], 50, 30, 50);
+//                    stack_pixel = stackSlid_pixel(pixel, stack_pixel, count);
+////                    Log.d(ClassName,"call stack!");
+//                    count += 1;
+//                    if (count > 10 && count % 11 == 1) {
+////
+//                        float[] input1 = flatteninput(stack_pixel[0]);
+//                        float[] input2 = flatteninput(stack_pixel[1]);
 //
-                        float[] input1 = flatteninput(stack_pixel[0]);
-                        float[] input2 = flatteninput(stack_pixel[1]);
-
-                        ByteBuffer byinput1 = flBufTobyteBuf(input1, input1.length);
-                        ByteBuffer byinput2 = flBufTobyteBuf(input2, input2.length);
-                        Object[] inputs = {byinput1, byinput2};
-//                        Log.d(ClassName,"call input!");
-                        Map<Integer, Object> outputs = new HashMap<>();
-                        final float[][] output_0 = new float[1][7];
-                        outputs.put(0, output_0);
-//
-                        tflite.runForMultipleInputsOutputs(inputs, outputs);
-                        tmp = FindProbIndex(output_0);
-                        Sendsignal = false;
-                        Log.d(ClassName,"FrameNumber:"+String.valueOf(frameNumber)+", PredictionResult:"+ FindProbIndex(output_0));
-                    }
-                }
+//                        ByteBuffer byinput1 = flBufTobyteBuf(input1, input1.length);
+//                        ByteBuffer byinput2 = flBufTobyteBuf(input2, input2.length);
+//                        Object[] inputs = {byinput1, byinput2};
+////                        Log.d(ClassName,"call input!");
+//                        Map<Integer, Object> outputs = new HashMap<>();
+//                        final float[][] output_0 = new float[1][7];
+//                        outputs.put(0, output_0);
+////
+//                        tflite.runForMultipleInputsOutputs(inputs, outputs);
+//                        tmp = FindProbIndex(output_0);
+//                        Sendsignal = false;
+//                        Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + FindProbIndex(output_0));
+//                    }
+//                }
 //////////////////////////////////////////////////////////////////////////////////////////////////
             }
 
@@ -688,6 +721,85 @@ public class mmWaveService extends Service {
 ///////////////////////////////////Parser////////////////////////////
     }
 
+    @SuppressLint("HandlerLeak")
+
+    private Handler ledHandler = new Handler() {
+
+        @Override
+
+        public void handleMessage(Message msg) {
+
+            super.handleMessage(msg);
+
+            Log.d(TAG, "ledHandler start");
+
+            int progress = 0;
+
+            String comm = "";
+
+            int ledAction = LED_FLASH_OFF;
+
+            switch (msg.what) {
+
+                case LED_FLASH_ON:
+
+                    progress = 255;
+
+                    ledAction = LED_FLASH_OFF;
+
+                    break;
+
+                case LED_FLASH_OFF:
+
+                    progress = 0;
+
+                    ledAction = LED_FLASH_ON;
+
+                    break;
+
+                case LED_OFF:
+
+                    progress = 0;
+
+                    ledAction = LED_OFF;
+
+                    break;
+
+            }
+
+            //EVT
+
+            comm = "echo " + progress + " > /sys/class/leds/yellow_pwm/brightness";
+            String command1[] = {"sh", "-c", comm};
+            runShellCommand(command1);
+
+            //EVT & DVT
+
+            comm = "echo " + progress + " > /sys/class/leds/yellow/brightness";
+            String command2[] = {"sh", "-c", comm};
+            runShellCommand(command2);
+            ledHandler.sendEmptyMessageDelayed(ledAction, LED_DELAY_TIME);
+
+
+        }
+
+    };
+
+
+    public static void runShellCommand(String command[]) {
+
+        try {
+
+            Process p = Runtime.getRuntime().exec(command);
+            p.waitFor();
+            int exitVal = p.exitValue();
+            Log.d(TAG, "runShellCommand: " + command + " (status: " + exitVal + ")");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private float[][] BytesPoint2Int(byte[] fileBytes) {
         int Headerlength = 0;
         int PointCloudlenght = 20;
@@ -776,7 +888,8 @@ public class mmWaveService extends Service {
         }
         return dataByte;
     }
-    ByteBuffer flBufTobyteBuf ( float flbuf[], int len){
+
+    ByteBuffer flBufTobyteBuf(float flbuf[], int len) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(len * 4);
         buffer.order(ByteOrder.nativeOrder());
         buffer.rewind();
@@ -785,6 +898,7 @@ public class mmWaveService extends Service {
         }
         return buffer;
     }
+
     public static int ByteArray2Int(byte[] b) {
         int MASK = 0xFF;
         int result = 0;
@@ -831,7 +945,8 @@ public class mmWaveService extends Service {
         }
         return input;
     }
-    float FindProb ( float probArray[][]){
+
+    float FindProb(float probArray[][]) {
         float temp = probArray[0][0];
         int key = 0;
 
@@ -843,20 +958,22 @@ public class mmWaveService extends Service {
         }
         return probArray[0][key];
     }
-    String FindProbIndex(float probArray[][]){
+
+    String FindProbIndex(float probArray[][]) {
         String[] classes = {"st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "get_up", "other"};
         float temp = probArray[0][0];
-        int key=0;
+        int key = 0;
 
-        for(int count=1;count<7;count++){
-            if(temp<probArray[0][count]){
-                temp=probArray[0][count];
-                key=count;
+        for (int count = 1; count < 7; count++) {
+            if (temp < probArray[0][count]) {
+                temp = probArray[0][count];
+                key = count;
             }
         }
         System.out.println(probArray[0][key]);
         return classes[key];
     }
+
     float[][][] stackSlid_pixel(float pixel[][], float stack_pixel[][][], int frame_count) {
         if (frame_count < 12) {
             stack_pixel[0][frame_count] = pixel[0];
