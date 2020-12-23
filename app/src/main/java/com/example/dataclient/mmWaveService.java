@@ -114,6 +114,14 @@ public class mmWaveService extends Service {
     private boolean isParsing = false, Sendsignal = true;
 
 
+    int numLabel = 0;
+    int numLabel_temp = -1;
+    String[] humanstates = {"stand", "sit", "fall", "getup"};
+
+    int humanstate = 0;
+    int progress = 0;
+    boolean fallsignal = false;
+
     long startTime = 0;
     long endTime = 0;
     long startTime_bed = 0;
@@ -141,7 +149,9 @@ public class mmWaveService extends Service {
     private static final int LED_OFF = 0;
     private static final int LED_FLASH_ON = 1;
     private static final int LED_FLASH_OFF = 2;
+    private static final int LED_ON = 3;
     public final static int LED_DELAY_TIME = 300;
+    private static int ledAction = 2;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -197,7 +207,7 @@ public class mmWaveService extends Service {
             InetAddress serverIp;
             while (true) {
                 try {
-                    serverIp = InetAddress.getByName("10.1.1.40"); // 10.1.1.38 // 192.168.0.105
+                    serverIp = InetAddress.getByName("10.1.1.42"); // 10.1.1.38 // 192.168.0.105
                     int serverPort = 5050;
                     clientSocket = new Socket(serverIp, serverPort);
                     break;
@@ -586,7 +596,7 @@ public class mmWaveService extends Service {
                     stack_pixel = stackSlid_pixel(pixel, stack_pixel, count);
 //                    Log.d(ClassName,"call stack!");
                     count += 1;
-                    if (count > 8 && count % 9 == 1) {
+                    if (count > 8 && count % 9 ==1 ) {
 //
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
@@ -602,69 +612,57 @@ public class mmWaveService extends Service {
                         tflite.runForMultipleInputsOutputs(inputs, outputs);
 
 
-                        int numLabel = getOutputLabel(output_0);
+                        numLabel = getOutputLabel(output_0);
 
-                        String[] humanstates = {"stand", "sit", "fall", "getup"};
+                        if (numLabel != numLabel_temp) {
+                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
+                            switch (numLabel) {
+                                case 0:
+                                case 2:
+                                case 6:
+                                    humanstate = 0;
+//                                    Log.d(ClassName, numLabel + " Turn on!");
+                                    ledHandler.removeMessages(LED_FLASH_ON);
+                                    ledHandler.removeMessages(LED_FLASH_OFF);
+                                    ledHandler.removeMessages(LED_OFF);
 
-                        int humanstate = 0;
-                        int progress = 0;
-                        boolean fallsignal = false;
+                                    ledHandler.sendEmptyMessage(LED_ON);
+                                    Log.d(ClassName, "flash end!");
+                                    fallsignal = false;
+                                    break;
 
-                        switch (numLabel) {
-                            case 0:
-                            case 2:
-                            case 6:
+                                case 3:
+                                case 1:
+                                case 4:
+                                    humanstate = 1;
 
-                                humanstate = 0;
-                                //turn on yellow LED
-                                //EVT
-                                progress = 255;
-                                comm = "echo " + progress + " > /sys/class/leds/yellow_pwm/brightness";
-                                String command1[] = {"sh", "-c", comm};
+                                    ledHandler.removeMessages(LED_FLASH_ON);
+                                    ledHandler.removeMessages(LED_FLASH_OFF);
+                                    ledHandler.removeMessages(LED_ON);
 
+                                    ledHandler.sendEmptyMessage(LED_OFF);
+                                    Log.d(ClassName, "flash end!");
+                                    fallsignal = false;
+                                    break;
 
-                                runShellCommand(command1);
-                                //EVT & DVT
-                                comm = "echo " + progress + " > /sys/class/leds/yellow/brightness";
-                                String command2[] = {"sh", "-c", comm};
-                                runShellCommand(command2);
+                                case 5: //fall,LED flash
+                                    humanstate = 2;
+                                    ledHandler.removeMessages(LED_ON);
+                                    ledHandler.removeMessages(LED_OFF);
 
-                                Log.d(ClassName, numLabel + " Turn on!");
-                                break;
-
-                            case 3:
-                            case 1:
-                            case 4:
-                                humanstate = 1;
-                                break;
-
-                            case 5: //fall,LED flash
-                                humanstate = 2;
-
-//                                    ledHandler.removeMessages(LED_FLASH_ON);
-//                                    ledHandler.removeMessages(LED_FLASH_OFF);
-//                                    ledHandler.sendEmptyMessage(LED_FLASH_ON);
-                                //turn off yellow LED
-
-                                //EVT
-                                progress = 0;
-                                comm = "echo " + progress + " > /sys/class/leds/yellow_pwm/brightness";
-                                String command3[] = new String[]{"sh", "-c", comm};
-                                runShellCommand(command3);
-                                //EVT & DVT
-                                comm = "echo " + progress + " > /sys/class/leds/yellow/brightness";
-                                String command4[] = new String[]{"sh", "-c", comm};
-                                runShellCommand(command4);
-                                Log.d(ClassName, numLabel + "Turn off!");
+                                    ledHandler.sendEmptyMessage(LED_FLASH_ON);
+                                    Log.d(ClassName, "flash on!");
+                                    fallsignal = true;
+                                    break;
 
 
-                                break;
+                            }
                         }
-
-
-//                        tmp = FindProbIndex(output_0);
+                        numLabel_temp = numLabel;
+//                        tmp = humanstates[humanstate];
+                        tmp = FindProbIndex(output_0);
                         Sendsignal = false;
-                        Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + " fallsignal:" + fallsignal);
+                        Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + ", fallsignal:" + fallsignal + ", result:" + numLabel);
                     }
                 }
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -779,11 +777,10 @@ public class mmWaveService extends Service {
 
             Log.d(TAG, "ledHandler start");
 
-            int progress = 0;
+//            int progress = 0;
 
             String comm = "";
 
-            int ledAction = LED_FLASH_OFF;
 
             switch (msg.what) {
 
@@ -811,6 +808,12 @@ public class mmWaveService extends Service {
 
                     break;
 
+                case LED_ON:
+
+                    progress = 255;
+
+                    ledAction = LED_ON;
+                    break;
             }
 
             //EVT
@@ -824,6 +827,7 @@ public class mmWaveService extends Service {
             comm = "echo " + progress + " > /sys/class/leds/yellow/brightness";
             String command2[] = {"sh", "-c", comm};
             runShellCommand(command2);
+
             ledHandler.sendEmptyMessageDelayed(ledAction, LED_DELAY_TIME);
 
 
@@ -1020,7 +1024,7 @@ public class mmWaveService extends Service {
     }
 
     String FindProbIndex(float probArray[][]) {
-        String[] classes = {"other", "st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "get_up"};
+        String[] classes = {"stand_walk", "st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "get_up"};
         float temp = probArray[0][0];
         int key = 0;
 
