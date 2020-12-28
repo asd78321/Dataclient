@@ -5,9 +5,6 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 
-import android.icu.util.Output;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -17,15 +14,14 @@ import android.util.Log;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.DataInputStream;
 import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
@@ -38,8 +34,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.ArrayDeque;
-import java.util.Iterator;
 import java.util.Calendar;
 import java.lang.Math; //abs()
 
@@ -49,9 +43,6 @@ import org.tensorflow.lite.Interpreter;
 
 import java.net.Socket;//Socket()
 import java.net.InetAddress;
-
-import android.content.IntentFilter;
-import android.os.Bundle;
 
 
 public class mmWaveService extends Service {
@@ -166,23 +157,17 @@ public class mmWaveService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(ClassName, "Start mmWaveService");
-//        Log.d(ClassName,"preparing Interpreter...");
-//        try {
-//            tflite = new Interpreter(loadModelFile("model"));
-//            Log.d(ClassName,"created Interpreter!");
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
+
         mContext = mmWaveService.this;
 
 
-        try {
-            socketClientThread = new Thread(Client);
-            socketClientThread.start();
-            Log.d(ClassName, "Start SocketThread!!");
-        } catch (Exception e) {
-            Log.d(ClassName, "ConnectService:" + e.getMessage());
-        }
+//        try {
+//            socketClientThread = new Thread(Client);
+//            socketClientThread.start();
+//            Log.d(ClassName, "Start SocketThread!!");
+//        } catch (Exception e) {
+//            Log.d(ClassName, "ConnectService:" + e.getMessage());
+//        }
 
 
         if (logThread == null) {
@@ -314,6 +299,8 @@ public class mmWaveService extends Service {
             } catch (IOException e) {
                 e.printStackTrace();
             }
+
+
 
             try {
                 Process p = Runtime.getRuntime().exec(uart_test);
@@ -483,10 +470,6 @@ public class mmWaveService extends Service {
                         }
 
                         last = now;
-
-                        startTime = 0;
-                        endTime = 0;
-
                     }
                 }
 
@@ -512,6 +495,8 @@ public class mmWaveService extends Service {
 
     private void parseTLV(byte[] fileBytes) {
         SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSS");
+        String filePath = "/data/data/state/logs/test.txt";
+        String Filemessage = "狀態";
         Date currentTime = new Date();
         String[] tragetObjectData = new String[5];
         String[] pointCloudData = new String[10];
@@ -539,6 +524,12 @@ public class mmWaveService extends Service {
 
         boolean TLV0A_Exist = false;
         boolean prefall = false; //Add,2020/6/15
+
+
+        File path = new File("/data/data/state/logs/");
+        if (!path.exists()){
+            path.mkdirs();
+        }
 
         ArrayList<Integer> Target_IDList = new ArrayList<Integer>();
 
@@ -589,7 +580,7 @@ public class mmWaveService extends Service {
                 nowFramePointCloud = bytesPointCloud;
                 msg = nowFramePointCloud;
 /////////////////////////////////Interpreter////////////////////////////////////
-                final float[][] pointcloud = BytesPoint2Int(msg);
+                final float[][] pointcloud = BytesPoint2float(msg);
 //                Log.d(ClassName,"call pointcloud!");
                 if (pointcloud != null) {
                     float[][] pixel = voxalize(pointcloud[0], pointcloud[1], pointcloud[2], 50, 30, 50);
@@ -601,9 +592,9 @@ public class mmWaveService extends Service {
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
 
-                        ByteBuffer byinput1 = flBufTobyteBuf(input1, input1.length);
-                        ByteBuffer byinput2 = flBufTobyteBuf(input2, input2.length);
-                        Object[] inputs = {byinput1, byinput2};
+                        ByteBuffer byteinput1 = floatBuffer2byteBuffer(input1, input1.length);
+                        ByteBuffer byteinput2 = floatBuffer2byteBuffer(input2, input2.length);
+                        Object[] inputs = {byteinput1, byteinput2};
 //                        Log.d(ClassName,"call input!");
                         Map<Integer, Object> outputs = new HashMap<>();
                         final float[][] output_0 = new float[1][7];
@@ -612,10 +603,10 @@ public class mmWaveService extends Service {
                         tflite.runForMultipleInputsOutputs(inputs, outputs);
 
 
-                        numLabel = getOutputLabel(output_0);
-
+                        numLabel = getOutputLabelindex(output_0);
+                        String nowLog = "";
                         if (numLabel != numLabel_temp) {
-                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
+//                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
                             switch (numLabel) {
                                 case 0:
                                 case 2:
@@ -654,14 +645,17 @@ public class mmWaveService extends Service {
                                     Log.d(ClassName, "flash on!");
                                     fallsignal = true;
                                     break;
-
-
                             }
                         }
                         numLabel_temp = numLabel;
+                        Date LogTime = new Date();
+                        String sLogTime = date.format(LogTime);
+                        nowLog = sLogTime + " " + humanstates[humanstate]+"\n";;
+                        writeToFile(nowLog,filePath,true);
+
 //                        tmp = humanstates[humanstate];
-                        tmp = FindProbIndex(output_0);
-                        Sendsignal = false;
+//                        tmp = FindProbIndex(output_0);
+//                        Sendsignal = false;
                         Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + ", fallsignal:" + fallsignal + ", result:" + numLabel);
                     }
                 }
@@ -764,9 +758,35 @@ public class mmWaveService extends Service {
         }
 ///////////////////////////////////Parser////////////////////////////
     }
+    // write Log offline
+    private void writeToFile(String message, String filePath, boolean isAppendMode){
+        File mFile = new File(filePath);
+        try {
+            boolean isFileExist = mFile.exists();
+            if(!isFileExist) {
+                mFile.createNewFile();
+            }
+            FileWriter fw = new FileWriter(mFile, isAppendMode);
+            PrintWriter pw = new PrintWriter(new BufferedWriter(fw));
+            try {
+                Log.d(ClassName,"Wrote:" + message);
+                pw.write(message);
+                pw.flush();
+                pw.close();
+                pw = null;
+                fw = null;
+            } catch (Exception e) {
+                Log.i("Test", "writeLog() filePath = " + filePath + " writeTitle exception");
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            Log.d("Test", "writeLog() filePath = " + filePath + " createNewFile exception");
+            e.printStackTrace();
+        }
+    }
 
+    // LED controller
     @SuppressLint("HandlerLeak")
-
     private Handler ledHandler = new Handler() {
 
         @Override
@@ -777,7 +797,6 @@ public class mmWaveService extends Service {
 
             Log.d(TAG, "ledHandler start");
 
-//            int progress = 0;
 
             String comm = "";
 
@@ -850,7 +869,7 @@ public class mmWaveService extends Service {
         }
     }
 
-    private float[][] BytesPoint2Int(byte[] fileBytes) {
+    private float[][] BytesPoint2float(byte[] fileBytes) {
         int Headerlength = 0;
         int PointCloudlenght = 20;
         int point_count = fileBytes.length / 20;
@@ -939,7 +958,7 @@ public class mmWaveService extends Service {
         return dataByte;
     }
 
-    ByteBuffer flBufTobyteBuf(float flbuf[], int len) {
+    ByteBuffer floatBuffer2byteBuffer(float flbuf[], int len) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(len * 4);
         buffer.order(ByteOrder.nativeOrder());
         buffer.rewind();
@@ -976,7 +995,7 @@ public class mmWaveService extends Service {
         return data3;
 
     }
-
+    // Load model by pathname
     private MappedByteBuffer loadModelFile(String model) throws IOException {
         AssetFileDescriptor fileDescriptor = getApplicationContext().getAssets().openFd(model + ".tflite");
         FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
@@ -1009,7 +1028,7 @@ public class mmWaveService extends Service {
         return probArray[0][key];
     }
 
-    int getOutputLabel(float probArray[][]) {
+    int getOutputLabelindex(float probArray[][]) {
         float temp = probArray[0][0];
         int key = 0;
 
