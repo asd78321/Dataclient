@@ -89,7 +89,7 @@ public class mmWaveService extends Service {
     private boolean isRecord = true;
     private float TLV_PosX;
     private float TLV_PosZ;
-    private int stack_size = 9;
+    private int stackFrame_size = 9;
     private int number;
     private int numbertemp = -1;
     private int count = 0;
@@ -108,7 +108,7 @@ public class mmWaveService extends Service {
     int numLabel = 0;
     int numLabel_temp = -1;
     String[] humanstates = {"stand", "sit", "fall", "getup"};
-    private int VoxelPointX = 25, VoxelPointY = 15;
+    private int VoxelPointX = 25, VoxelPointY = 35;
 
     int humanstate = 0;
     int progress = 0;
@@ -201,12 +201,12 @@ public class mmWaveService extends Service {
                     Log.d(ClassName, "SocketService:" + e.getMessage());
                 }
             }
-            Log.d(ClassName, "create Interpreter");
-            try {
-                tflite = new Interpreter(loadModelFile("model"));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+//            Log.d(ClassName, "create Interpreter");
+//            try {
+//                tflite = new Interpreter(loadModelFile("model"));
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
             if (clientSocket.isConnected()) {
                 Log.d(ClassName, "conencted server!!!");
                 while (clientSocket.isConnected()) {
@@ -214,17 +214,17 @@ public class mmWaveService extends Service {
                     if (true) {
                         try {
                             DataOutputStream bw = new DataOutputStream(new BufferedOutputStream(clientSocket.getOutputStream()));
-//                            if (numbertemp != number && msg != null) {
-//                                bw.write(msg);
-//                                bw.flush();
-//                                Log.d(ClassName, "send_Frame:" + number);
-//                            }
-//                            numbertemp = number;
-                            if (Sendsignal != true) {
-                                bw.writeUTF(tmp);
+                            if (numbertemp != number && msg != null) {
+                                bw.write(msg);
                                 bw.flush();
-                                Sendsignal = true;
+                                Log.d(ClassName, "send_Frame:" + number);
                             }
+                            numbertemp = number;
+//                            if (Sendsignal != true) {
+//                                bw.writeUTF(tmp);
+//                                bw.flush();
+//                                Sendsignal = true;
+//                            }
                         } catch (Exception e) {
                             Log.d(ClassName, "Socketsend:" + e.getMessage());
                             continue;
@@ -580,106 +580,106 @@ public class mmWaveService extends Service {
                 nowFramePointCloud = bytesPointCloud;
                 msg = nowFramePointCloud;
 /////////////////////////////////Interpreter////////////////////////////////////
-                final float[][] pointcloud = BytesPoint2float(msg);
-//                Log.d(ClassName,"call pointcloud!");
-                if (pointcloud != null) {
-                    float[][] pixels = voxelize(pointcloud[0], pointcloud[1], pointcloud[2], VoxelPointX, VoxelPointY, VoxelPointX);
-                    stack_pixel = stackSlid_pixel(pixels, stack_pixel, count);
-//                    Log.d(ClassName,"call stack!");
-                    count += 1;
-                    PointsCount = LogPointCount(TLVPoints, PointsCount, count);
-                    if (count > 9 && count % 4 == 1) {
-                        float[] input1 = flatteninput(stack_pixel[0]);
-                        float[] input2 = flatteninput(stack_pixel[1]);
-
-                        String nowLog = "";
-
-                        ByteBuffer byteinput1 = floatBuffer2byteBuffer(input1, input1.length);
-                        ByteBuffer byteinput2 = floatBuffer2byteBuffer(input2, input2.length);
-                        Object[] inputs = {byteinput1, byteinput2};
-//                        Log.d(ClassName,"call input!");
-                        Map<Integer, Object> outputs = new HashMap<>();
-                        final float[][] output_0 = new float[1][7];
-                        outputs.put(0, output_0);
-
-//                        try {
-//                            tflite.runForMultipleInputsOutputs(inputs, outputs);
-//                        } catch (Exception e) {
-//                            Date LogTime = new Date();
-//                            String sLogTime = date.format(LogTime);
-//                            nowLog = sLogTime + " ," + "empty" + "\n";
-//                            ;
-//                            writeToFile(nowLog, filePath, true);
-//                            break;
-//                        }
-                        tflite.runForMultipleInputsOutputs(inputs, outputs);
-                        numLabel = getOutputLabelindex(output_0);
-
-                        if (numLabel != numLabel_temp) {
-//                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
-                            switch (numLabel) {
-                                case 6:
-//                                    humanstate = 3;
-////                                    Log.d(ClassName, numLabel + " Turn on!");
+//                final float[][] pointcloud = BytesPoint2float(msg);
+////                Log.d(ClassName,"call pointcloud!");
+//                if (pointcloud != null) {
+//                    float[][] pixels = voxelize(pointcloud[0], pointcloud[1], pointcloud[2], VoxelPointX, VoxelPointY, VoxelPointX);
+//                    stack_pixel = stackSlid_pixel(pixels, stack_pixel, count);
+////                    Log.d(ClassName,"call stack!");
+//                    count += 1;
+//                    PointsCount = LogPointCount(TLVPoints, PointsCount, count);
+//                    if (count > 9 && count % 4 == 1) {
+//                        float[] input1 = flatteninput(stack_pixel[0]);
+//                        float[] input2 = flatteninput(stack_pixel[1]);
+//
+//                        String nowLog = "";
+//
+//                        ByteBuffer byteinput1 = floatBuffer2byteBuffer(input1, input1.length);
+//                        ByteBuffer byteinput2 = floatBuffer2byteBuffer(input2, input2.length);
+//                        Object[] inputs = {byteinput1, byteinput2};
+////                        Log.d(ClassName,"call input!");
+//                        Map<Integer, Object> outputs = new HashMap<>();
+//                        final float[][] output_0 = new float[1][7];
+//                        outputs.put(0, output_0);
+//
+////                        try {
+////                            tflite.runForMultipleInputsOutputs(inputs, outputs);
+////                        } catch (Exception e) {
+////                            Date LogTime = new Date();
+////                            String sLogTime = date.format(LogTime);
+////                            nowLog = sLogTime + " ," + "empty" + "\n";
+////                            ;
+////                            writeToFile(nowLog, filePath, true);
+////                            break;
+////                        }
+//                        tflite.runForMultipleInputsOutputs(inputs, outputs);
+//                        numLabel = getOutputLabelindex(output_0);
+//
+//                        if (numLabel != numLabel_temp) {
+////                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
+//                            switch (numLabel) {
+//                                case 6:
+////                                    humanstate = 3;
+//////                                    Log.d(ClassName, numLabel + " Turn on!");
+////                                    ledHandler.removeMessages(LED_FLASH_ON);
+////                                    ledHandler.removeMessages(LED_FLASH_OFF);
+////                                    ledHandler.removeMessages(LED_OFF);
+////
+////                                    ledHandler.sendEmptyMessage(LED_ON);
+////                                    Log.d(ClassName, "turn on LED.");
+////                                    fallsignal = false;
+////                                    break;
+//                                case 0:
+//                                case 2:
+//                                    humanstate = 0;
 //                                    ledHandler.removeMessages(LED_FLASH_ON);
 //                                    ledHandler.removeMessages(LED_FLASH_OFF);
-//                                    ledHandler.removeMessages(LED_OFF);
+//                                    ledHandler.removeMessages(LED_ON);
 //
-//                                    ledHandler.sendEmptyMessage(LED_ON);
-//                                    Log.d(ClassName, "turn on LED.");
+//                                    ledHandler.sendEmptyMessage(LED_OFF);
+//                                    Log.d(ClassName, "turn off LED.");
 //                                    fallsignal = false;
 //                                    break;
-                                case 0:
-                                case 2:
-                                    humanstate = 0;
-                                    ledHandler.removeMessages(LED_FLASH_ON);
-                                    ledHandler.removeMessages(LED_FLASH_OFF);
-                                    ledHandler.removeMessages(LED_ON);
-
-                                    ledHandler.sendEmptyMessage(LED_OFF);
-                                    Log.d(ClassName, "turn off LED.");
-                                    fallsignal = false;
-                                    break;
-
-                                case 1:
-                                case 3:
-                                case 4:
-                                    humanstate = 1;
-
-                                    ledHandler.removeMessages(LED_FLASH_ON);
-                                    ledHandler.removeMessages(LED_FLASH_OFF);
-                                    ledHandler.removeMessages(LED_ON);
-
-                                    ledHandler.sendEmptyMessage(LED_OFF);
-                                    Log.d(ClassName, "turn off LED.");
-                                    fallsignal = false;
-                                    break;
-
-                                case 5: //fall,LED flash
-                                    humanstate = 2;
-                                    ledHandler.removeMessages(LED_ON);
-                                    ledHandler.removeMessages(LED_OFF);
-
-                                    ledHandler.sendEmptyMessage(LED_FLASH_ON);
-                                    Log.d(ClassName, "flash on!");
-                                    fallsignal = true;
-                                    break;
-
-                            }
-                        }
-                        numLabel_temp = numLabel;
-                        Date LogTime = new Date();
-                        String sLogTime = date.format(LogTime);
-                        int logpoints = sumArray(PointsCount);
-                        Log.d(ClassName, "Metrix:" + logpoints);
-                        nowLog = sLogTime + "Frame:" + frameNumber + " state: " + humanstates[humanstate] + " Prediction: " + numLabel + " Points: " + logpoints + "\n";
-                        writeToFile(nowLog, filePath, true);
-//                        tmp = humanstates[humanstate];
-//                        tmp = FindProbIndex(output_0);
-//                        Sendsignal = false;
-                        Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + ", fallsignal:" + fallsignal + ", result:" + numLabel);
-                    }
-                }
+//
+//                                case 1:
+//                                case 3:
+//                                case 4:
+//                                    humanstate = 1;
+//
+//                                    ledHandler.removeMessages(LED_FLASH_ON);
+//                                    ledHandler.removeMessages(LED_FLASH_OFF);
+//                                    ledHandler.removeMessages(LED_ON);
+//
+//                                    ledHandler.sendEmptyMessage(LED_OFF);
+//                                    Log.d(ClassName, "turn off LED.");
+//                                    fallsignal = false;
+//                                    break;
+//
+//                                case 5: //fall,LED flash
+//                                    humanstate = 2;
+//                                    ledHandler.removeMessages(LED_ON);
+//                                    ledHandler.removeMessages(LED_OFF);
+//
+//                                    ledHandler.sendEmptyMessage(LED_FLASH_ON);
+//                                    Log.d(ClassName, "flash on!");
+//                                    fallsignal = true;
+//                                    break;
+//
+//                            }
+//                        }
+//                        numLabel_temp = numLabel;
+//                        Date LogTime = new Date();
+//                        String sLogTime = date.format(LogTime);
+//                        int logpoints = sumArray(PointsCount);
+//                        Log.d(ClassName, "Metrix:" + logpoints);
+//                        nowLog = sLogTime + "Frame:" + frameNumber + " state: " + humanstates[humanstate] + " Prediction: " + numLabel + " Points: " + logpoints + "\n";
+//                        writeToFile(nowLog, filePath, true);
+////                        tmp = humanstates[humanstate];
+////                        tmp = FindProbIndex(output_0);
+////                        Sendsignal = false;
+//                        Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + ", fallsignal:" + fallsignal + ", result:" + numLabel);
+//                    }
+//                }
 //////////////////////////////////////////////////////////////////////////////////////////////////
             }
 
@@ -894,16 +894,16 @@ public class mmWaveService extends Service {
     private int[] LogPointCount(int Points, int[] PointsCount, int framecount) {
         int[] new_PointsCount = new int[9];
 
-        if (framecount < stack_size) {
+        if (framecount < stackFrame_size) {
             PointsCount[framecount] = Points;
 
             return PointsCount;
 
         } else {
-            for (int i = 0; i < stack_size - 1; i++) {
+            for (int i = 0; i < stackFrame_size - 1; i++) {
                 new_PointsCount[i] = PointsCount[i + 1];
             }
-            new_PointsCount[stack_size - 1] = Points;
+            new_PointsCount[stackFrame_size - 1] = Points;
             PointsCount = new_PointsCount;
 
             return PointsCount;
@@ -1048,8 +1048,8 @@ public class mmWaveService extends Service {
     }
 
     float[] flatteninput(float stack_pixel[][]) {
-        float[] input = new float[stack_size * VoxelPointX * VoxelPointY];
-        for (int i = 0; i < stack_size; i++) {
+        float[] input = new float[stackFrame_size * VoxelPointX * VoxelPointY];
+        for (int i = 0; i < stackFrame_size; i++) {
             for (int j = 0; j < (VoxelPointX * VoxelPointY); j++) {
                 input[(i * VoxelPointX * VoxelPointY) + j] = stack_pixel[i][j];
             }
@@ -1100,17 +1100,17 @@ public class mmWaveService extends Service {
     }
 
     float[][][] stackSlid_pixel(float pixel[][], float stack_pixel[][][], int frame_count) {
-        if (frame_count < stack_size) {
+        if (frame_count < stackFrame_size) {
             stack_pixel[0][frame_count] = pixel[0];
             stack_pixel[1][frame_count] = pixel[1];
         } else {
-            float[][][] new_stack_pixel = new float[2][stack_size][VoxelPointX * VoxelPointY];
-            for (int i = 0; i < stack_size - 1; i++) {
+            float[][][] new_stack_pixel = new float[2][stackFrame_size][VoxelPointX * VoxelPointY];
+            for (int i = 0; i < stackFrame_size - 1; i++) {
                 new_stack_pixel[0][i] = stack_pixel[0][i + 1];  //third dim is for [X*Y points]
                 new_stack_pixel[1][i] = stack_pixel[1][i + 1];
             }
-            new_stack_pixel[0][stack_size - 1] = pixel[0];
-            new_stack_pixel[1][stack_size - 1] = pixel[1];
+            new_stack_pixel[0][stackFrame_size - 1] = pixel[0];
+            new_stack_pixel[1][stackFrame_size - 1] = pixel[1];
 
             stack_pixel = new_stack_pixel;
         }
@@ -1123,7 +1123,7 @@ public class mmWaveService extends Service {
 
 //        float [] pixel1 = new float[pointX * pointY];
 //        float [] pixel2 = new float[pointY * pointZ];
-        float[][] pixel = new float[2][pointX * pointZ];
+        float[][] pixel = new float[2][pointX * pointY];
 
         int x_min = -3;
         int x_max = 3;
@@ -1135,7 +1135,7 @@ public class mmWaveService extends Service {
         int z_min = -3;
 
 
-        double x_res = (double) (x_max - x_min) / (pointX);
+        double x_res = (double) (x_max - x_min) / pointX;
         double y_res = (double) (y_max - y_min) / pointY;
         double z_res = (double) (z_max - z_min) / pointZ;
 
