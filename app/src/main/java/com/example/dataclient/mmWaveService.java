@@ -89,7 +89,7 @@ public class mmWaveService extends Service {
     private boolean isRecord = true;
     private float TLV_PosX;
     private float TLV_PosZ;
-
+    private int stack_size = 9;
     private int number;
     private int numbertemp = -1;
     private int count = 0;
@@ -108,6 +108,7 @@ public class mmWaveService extends Service {
     int numLabel = 0;
     int numLabel_temp = -1;
     String[] humanstates = {"stand", "sit", "fall", "getup"};
+    private int VoxelPointX = 25, VoxelPointY = 15;
 
     int humanstate = 0;
     int progress = 0;
@@ -128,13 +129,13 @@ public class mmWaveService extends Service {
     public volatile boolean isRadarPending = false;
     public Object lock = new Object();
 
-
+    int[] PointsCount = new int[9];
     final int SIZE_SAMPLE = 512;
-    float[][][] stack_pixel = new float[2][9][50 * 30];
+    float[][][] stack_pixel = new float[2][9][VoxelPointX * VoxelPointY];
     final int ENERGY_BUF_SIZE = 50;
     final int BR_OUT_BUF_SIZE = 10;
     private Interpreter tflite;
-
+    int PointCount, OverPointCount = 0;
     //LED controller
     private static final String TAG = "LedSample";
     private static final int LED_OFF = 0;
@@ -143,6 +144,7 @@ public class mmWaveService extends Service {
     private static final int LED_ON = 3;
     public final static int LED_DELAY_TIME = 300;
     private static int ledAction = 2;
+    private Date LogStartTime = new Date();
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -159,7 +161,6 @@ public class mmWaveService extends Service {
         Log.d(ClassName, "Start mmWaveService");
 
         mContext = mmWaveService.this;
-
 
 //        try {
 //            socketClientThread = new Thread(Client);
@@ -299,7 +300,6 @@ public class mmWaveService extends Service {
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
 
 
             try {
@@ -494,10 +494,10 @@ public class mmWaveService extends Service {
 
 
     private void parseTLV(byte[] fileBytes) {
-        SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSS");
-        String filePath = "/data/data/state/logs/test.txt";
-        String Filemessage = "狀態";
-        Date currentTime = new Date();
+        SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+        SimpleDateFormat saving_date = new SimpleDateFormat("yyyyMMddHHmm");
+        String Filename = saving_date.format(LogStartTime);
+        String filePath = "/data/data/state/logs/" + Filename + ".txt";
         String[] tragetObjectData = new String[5];
         String[] pointCloudData = new String[10];
         String[] parseTLV = new String[STACK_SIZE];
@@ -527,7 +527,7 @@ public class mmWaveService extends Service {
 
 
         File path = new File("/data/data/state/logs/");
-        if (!path.exists()){
+        if (!path.exists()) {
             path.mkdirs();
         }
 
@@ -583,14 +583,16 @@ public class mmWaveService extends Service {
                 final float[][] pointcloud = BytesPoint2float(msg);
 //                Log.d(ClassName,"call pointcloud!");
                 if (pointcloud != null) {
-                    float[][] pixel = voxalize(pointcloud[0], pointcloud[1], pointcloud[2], 50, 30, 50);
-                    stack_pixel = stackSlid_pixel(pixel, stack_pixel, count);
+                    float[][] pixels = voxelize(pointcloud[0], pointcloud[1], pointcloud[2], VoxelPointX, VoxelPointY, VoxelPointX);
+                    stack_pixel = stackSlid_pixel(pixels, stack_pixel, count);
 //                    Log.d(ClassName,"call stack!");
                     count += 1;
-                    if (count > 8 && count % 9 ==1 ) {
-//
+                    PointsCount = LogPointCount(TLVPoints, PointsCount, count);
+                    if (count > 9 && count % 4 == 1) {
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
+
+                        String nowLog = "";
 
                         ByteBuffer byteinput1 = floatBuffer2byteBuffer(input1, input1.length);
                         ByteBuffer byteinput2 = floatBuffer2byteBuffer(input2, input2.length);
@@ -599,31 +601,48 @@ public class mmWaveService extends Service {
                         Map<Integer, Object> outputs = new HashMap<>();
                         final float[][] output_0 = new float[1][7];
                         outputs.put(0, output_0);
-//
+
+//                        try {
+//                            tflite.runForMultipleInputsOutputs(inputs, outputs);
+//                        } catch (Exception e) {
+//                            Date LogTime = new Date();
+//                            String sLogTime = date.format(LogTime);
+//                            nowLog = sLogTime + " ," + "empty" + "\n";
+//                            ;
+//                            writeToFile(nowLog, filePath, true);
+//                            break;
+//                        }
                         tflite.runForMultipleInputsOutputs(inputs, outputs);
-
-
                         numLabel = getOutputLabelindex(output_0);
-                        String nowLog = "";
+
                         if (numLabel != numLabel_temp) {
 //                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
                             switch (numLabel) {
+                                case 6:
+//                                    humanstate = 3;
+////                                    Log.d(ClassName, numLabel + " Turn on!");
+//                                    ledHandler.removeMessages(LED_FLASH_ON);
+//                                    ledHandler.removeMessages(LED_FLASH_OFF);
+//                                    ledHandler.removeMessages(LED_OFF);
+//
+//                                    ledHandler.sendEmptyMessage(LED_ON);
+//                                    Log.d(ClassName, "turn on LED.");
+//                                    fallsignal = false;
+//                                    break;
                                 case 0:
                                 case 2:
-                                case 6:
                                     humanstate = 0;
-//                                    Log.d(ClassName, numLabel + " Turn on!");
                                     ledHandler.removeMessages(LED_FLASH_ON);
                                     ledHandler.removeMessages(LED_FLASH_OFF);
-                                    ledHandler.removeMessages(LED_OFF);
+                                    ledHandler.removeMessages(LED_ON);
 
-                                    ledHandler.sendEmptyMessage(LED_ON);
-                                    Log.d(ClassName, "flash end!");
+                                    ledHandler.sendEmptyMessage(LED_OFF);
+                                    Log.d(ClassName, "turn off LED.");
                                     fallsignal = false;
                                     break;
 
-                                case 3:
                                 case 1:
+                                case 3:
                                 case 4:
                                     humanstate = 1;
 
@@ -632,7 +651,7 @@ public class mmWaveService extends Service {
                                     ledHandler.removeMessages(LED_ON);
 
                                     ledHandler.sendEmptyMessage(LED_OFF);
-                                    Log.d(ClassName, "flash end!");
+                                    Log.d(ClassName, "turn off LED.");
                                     fallsignal = false;
                                     break;
 
@@ -645,14 +664,16 @@ public class mmWaveService extends Service {
                                     Log.d(ClassName, "flash on!");
                                     fallsignal = true;
                                     break;
+
                             }
                         }
                         numLabel_temp = numLabel;
                         Date LogTime = new Date();
                         String sLogTime = date.format(LogTime);
-                        nowLog = sLogTime + " " + humanstates[humanstate]+"\n";;
-                        writeToFile(nowLog,filePath,true);
-
+                        int logpoints = sumArray(PointsCount);
+                        Log.d(ClassName, "Metrix:" + logpoints);
+                        nowLog = sLogTime + "Frame:" + frameNumber + " state: " + humanstates[humanstate] + " Prediction: " + numLabel + " Points: " + logpoints + "\n";
+                        writeToFile(nowLog, filePath, true);
 //                        tmp = humanstates[humanstate];
 //                        tmp = FindProbIndex(output_0);
 //                        Sendsignal = false;
@@ -758,18 +779,19 @@ public class mmWaveService extends Service {
         }
 ///////////////////////////////////Parser////////////////////////////
     }
+
     // write Log offline
-    private void writeToFile(String message, String filePath, boolean isAppendMode){
+    private void writeToFile(String message, String filePath, boolean isAppendMode) {
         File mFile = new File(filePath);
         try {
             boolean isFileExist = mFile.exists();
-            if(!isFileExist) {
+            if (!isFileExist) {
                 mFile.createNewFile();
             }
             FileWriter fw = new FileWriter(mFile, isAppendMode);
             PrintWriter pw = new PrintWriter(new BufferedWriter(fw));
             try {
-                Log.d(ClassName,"Wrote:" + message);
+                Log.d(ClassName, "Wrote:" + message);
                 pw.write(message);
                 pw.flush();
                 pw.close();
@@ -866,6 +888,25 @@ public class mmWaveService extends Service {
 
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private int[] LogPointCount(int Points, int[] PointsCount, int framecount) {
+        int[] new_PointsCount = new int[9];
+
+        if (framecount < stack_size) {
+            PointsCount[framecount] = Points;
+
+            return PointsCount;
+
+        } else {
+            for (int i = 0; i < stack_size - 1; i++) {
+                new_PointsCount[i] = PointsCount[i + 1];
+            }
+            new_PointsCount[stack_size - 1] = Points;
+            PointsCount = new_PointsCount;
+
+            return PointsCount;
         }
     }
 
@@ -995,6 +1036,7 @@ public class mmWaveService extends Service {
         return data3;
 
     }
+
     // Load model by pathname
     private MappedByteBuffer loadModelFile(String model) throws IOException {
         AssetFileDescriptor fileDescriptor = getApplicationContext().getAssets().openFd(model + ".tflite");
@@ -1006,10 +1048,10 @@ public class mmWaveService extends Service {
     }
 
     float[] flatteninput(float stack_pixel[][]) {
-        float[] input = new float[9 * 50 * 30];
-        for (int i = 0; i < 9; i++) {
-            for (int j = 0; j < (50 * 30); j++) {
-                input[(i * 50 * 30) + j] = stack_pixel[i][j];
+        float[] input = new float[stack_size * VoxelPointX * VoxelPointY];
+        for (int i = 0; i < stack_size; i++) {
+            for (int j = 0; j < (VoxelPointX * VoxelPointY); j++) {
+                input[(i * VoxelPointX * VoxelPointY) + j] = stack_pixel[i][j];
             }
         }
         return input;
@@ -1058,17 +1100,17 @@ public class mmWaveService extends Service {
     }
 
     float[][][] stackSlid_pixel(float pixel[][], float stack_pixel[][][], int frame_count) {
-        if (frame_count < 9) {
+        if (frame_count < stack_size) {
             stack_pixel[0][frame_count] = pixel[0];
             stack_pixel[1][frame_count] = pixel[1];
         } else {
-            float[][][] new_stack_pixel = new float[2][9][50 * 30];
-            for (int i = 0; i < 8; i++) {
+            float[][][] new_stack_pixel = new float[2][stack_size][VoxelPointX * VoxelPointY];
+            for (int i = 0; i < stack_size - 1; i++) {
                 new_stack_pixel[0][i] = stack_pixel[0][i + 1];  //third dim is for [X*Y points]
                 new_stack_pixel[1][i] = stack_pixel[1][i + 1];
             }
-            new_stack_pixel[0][8] = pixel[0];
-            new_stack_pixel[1][8] = pixel[1];
+            new_stack_pixel[0][stack_size - 1] = pixel[0];
+            new_stack_pixel[1][stack_size - 1] = pixel[1];
 
             stack_pixel = new_stack_pixel;
         }
@@ -1076,7 +1118,7 @@ public class mmWaveService extends Service {
         return stack_pixel;
     }
 
-    float[][] voxalize(float x[], float y[], float z[], int pointX, int pointY, int pointZ) {
+    float[][] voxelize(float x[], float y[], float z[], int pointX, int pointY, int pointZ) {
         int len = x.length;
 
 //        float [] pixel1 = new float[pointX * pointY];
@@ -1087,7 +1129,7 @@ public class mmWaveService extends Service {
         int x_max = 3;
 
         int y_min = 0;
-        double y_max = 2.5;
+        double y_max = 2.7;
 
         int z_max = 3;
         int z_min = -3;
