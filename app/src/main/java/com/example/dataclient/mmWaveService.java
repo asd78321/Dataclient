@@ -162,13 +162,13 @@ public class mmWaveService extends Service {
 
         mContext = mmWaveService.this;
 
-//        try {
-//            socketClientThread = new Thread(Client);
-//            socketClientThread.start();
-//            Log.d(ClassName, "Start SocketThread!!");
-//        } catch (Exception e) {
-//            Log.d(ClassName, "ConnectService:" + e.getMessage());
-//        }
+        try {
+            socketClientThread = new Thread(Client);
+            socketClientThread.start();
+            Log.d(ClassName, "Start SocketThread!!");
+        } catch (Exception e) {
+            Log.d(ClassName, "ConnectService:" + e.getMessage());
+        }
 
 
         if (logThread == null) {
@@ -193,7 +193,7 @@ public class mmWaveService extends Service {
             InetAddress serverIp;
             while (true) {
                 try {
-                    serverIp = InetAddress.getByName("10.1.1.42"); // 10.1.1.38 // 192.168.0.105
+                    serverIp = InetAddress.getByName("10.1.1.50"); // 10.1.1.38 // 192.168.0.105
                     int serverPort = 5050;
                     clientSocket = new Socket(serverIp, serverPort);
                     break;
