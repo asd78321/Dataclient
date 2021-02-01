@@ -15,6 +15,7 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -108,7 +109,7 @@ public class mmWaveService extends Service {
     int numLabel = 0;
     int numLabel_temp = -1;
     String[] humanstates = {"stand", "sit", "fall", "getup"};
-    private int VoxelPointX = 25, VoxelPointY = 15;
+    private int VoxelPointX = 20, VoxelPointY = 30;
 
     int humanstate = 0;
     int progress = 0;
@@ -494,10 +495,10 @@ public class mmWaveService extends Service {
 
 
     private void parseTLV(byte[] fileBytes) {
-        SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+        SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSS");
         SimpleDateFormat saving_date = new SimpleDateFormat("yyyyMMddHHmm");
         String Filename = saving_date.format(LogStartTime);
-        String filePath = "/data/data/state/logs/" + Filename + ".txt";
+
         String[] tragetObjectData = new String[5];
         String[] pointCloudData = new String[10];
         String[] parseTLV = new String[STACK_SIZE];
@@ -526,10 +527,15 @@ public class mmWaveService extends Service {
         boolean prefall = false; //Add,2020/6/15
 
 
-        File path = new File("/data/data/state/logs/");
+        File path = new File("/sdcard/PointCLoud/");
         if (!path.exists()) {
+            Log.d(ClassName,"path not exists");
             path.mkdirs();
         }
+
+        String csvfilePath = path +"/"+ Filename + ".csv";
+        String filePath = path + "/"+Filename + ".txt";
+        Log.d(ClassName,"filename:"+csvfilePath+"/"+filePath);
 
         ArrayList<Integer> Target_IDList = new ArrayList<Integer>();
 
@@ -588,6 +594,11 @@ public class mmWaveService extends Service {
 //                    Log.d(ClassName,"call stack!");
                     count += 1;
                     PointsCount = LogPointCount(TLVPoints, PointsCount, count);
+
+                    Date csvLogTime = new Date();
+                    String csvTime = date.format(csvLogTime);
+                    writeToCSV(pointcloud,csvTime,csvfilePath);
+
                     if (count > 9 && count % 4 == 1) {
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
@@ -619,16 +630,6 @@ public class mmWaveService extends Service {
 //                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
                             switch (numLabel) {
                                 case 6:
-//                                    humanstate = 3;
-////                                    Log.d(ClassName, numLabel + " Turn on!");
-//                                    ledHandler.removeMessages(LED_FLASH_ON);
-//                                    ledHandler.removeMessages(LED_FLASH_OFF);
-//                                    ledHandler.removeMessages(LED_OFF);
-//
-//                                    ledHandler.sendEmptyMessage(LED_ON);
-//                                    Log.d(ClassName, "turn on LED.");
-//                                    fallsignal = false;
-//                                    break;
                                 case 0:
                                 case 2:
                                     humanstate = 0;
@@ -780,6 +781,42 @@ public class mmWaveService extends Service {
 ///////////////////////////////////Parser////////////////////////////
     }
 
+    private void writeToCSV(float[][] PointCloud,String csvDate,String CSVpath) {
+        File cFile = new File(CSVpath);
+        StringBuilder sb;
+        try{
+            if(!cFile.exists()){
+                cFile.createNewFile();
+            }
+            FileOutputStream os = new FileOutputStream(cFile,true);
+            sb = new StringBuilder();
+
+            try{
+                for (int i = 0; i < PointCloud[0].length;i++){
+                    sb.append(csvDate).append(",");
+                    sb.append(PointCloud[0][i]).append(",");
+                    sb.append(PointCloud[1][i]).append(",");
+                    sb.append(PointCloud[2][i]);
+                    sb.append("\n");
+                }
+
+                os.write(sb.toString().getBytes());
+                os.flush();
+                os.close();
+
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+
+
+
+    }
+
     // write Log offline
     private void writeToFile(String message, String filePath, boolean isAppendMode) {
         File mFile = new File(filePath);
@@ -816,44 +853,29 @@ public class mmWaveService extends Service {
         public void handleMessage(Message msg) {
 
             super.handleMessage(msg);
-
             Log.d(TAG, "ledHandler start");
-
-
             String comm = "";
-
-
             switch (msg.what) {
 
                 case LED_FLASH_ON:
-
                     progress = 255;
-
                     ledAction = LED_FLASH_OFF;
 
                     break;
-
                 case LED_FLASH_OFF:
-
                     progress = 0;
-
                     ledAction = LED_FLASH_ON;
 
                     break;
-
                 case LED_OFF:
-
                     progress = 0;
-
                     ledAction = LED_OFF;
 
                     break;
-
                 case LED_ON:
-
                     progress = 255;
-
                     ledAction = LED_ON;
+
                     break;
             }
 
@@ -1123,13 +1145,13 @@ public class mmWaveService extends Service {
 
 //        float [] pixel1 = new float[pointX * pointY];
 //        float [] pixel2 = new float[pointY * pointZ];
-        float[][] pixel = new float[2][pointX * pointZ];
+        float[][] pixel = new float[2][pointX * pointY];
 
         int x_min = -3;
         int x_max = 3;
 
         int y_min = 0;
-        double y_max = 2.7;
+        double y_max = 2.9;
 
         int z_max = 3;
         int z_min = -3;
