@@ -90,7 +90,7 @@ public class mmWaveService extends Service {
     private boolean isRecord = true;
     private float TLV_PosX;
     private float TLV_PosZ;
-    private int stack_size = 9;
+    private int stack_size_count = 9;
     private int number;
     private int numbertemp = -1;
     private int count = 0;
@@ -129,10 +129,10 @@ public class mmWaveService extends Service {
     private DetectRadarThread detRadarThread;
     public volatile boolean isRadarPending = false;
     public Object lock = new Object();
-
-    int[] PointsCount = new int[9];
+    int[] PointsCount = new int[stack_size_count];
     final int SIZE_SAMPLE = 512;
-    float[][][] stack_pixel = new float[2][9][VoxelPointX * VoxelPointY];
+
+    float[][][] stack_pixel = new float[2][stack_size_count][VoxelPointX * VoxelPointY];
     final int ENERGY_BUF_SIZE = 50;
     final int BR_OUT_BUF_SIZE = 10;
     private Interpreter tflite;
@@ -495,7 +495,7 @@ public class mmWaveService extends Service {
 
 
     private void parseTLV(byte[] fileBytes) {
-        SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSS");
+        SimpleDateFormat date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
         SimpleDateFormat saving_date = new SimpleDateFormat("yyyyMMddHHmm");
         String Filename = saving_date.format(LogStartTime);
 
@@ -599,7 +599,7 @@ public class mmWaveService extends Service {
                     String csvTime = date.format(csvLogTime);
                     writeToCSV(pointcloud,csvTime,csvfilePath);
 
-                    if (count > 9 && count % 4 == 1) {
+                    if (count > stack_size_count && count % 4 == 1) {
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
 
@@ -914,18 +914,18 @@ public class mmWaveService extends Service {
     }
 
     private int[] LogPointCount(int Points, int[] PointsCount, int framecount) {
-        int[] new_PointsCount = new int[9];
+        int[] new_PointsCount = new int[stack_size_count];
 
-        if (framecount < stack_size) {
+        if (framecount < stack_size_count) {
             PointsCount[framecount] = Points;
 
             return PointsCount;
 
         } else {
-            for (int i = 0; i < stack_size - 1; i++) {
+            for (int i = 0; i < stack_size_count - 1; i++) {
                 new_PointsCount[i] = PointsCount[i + 1];
             }
-            new_PointsCount[stack_size - 1] = Points;
+            new_PointsCount[stack_size_count - 1] = Points;
             PointsCount = new_PointsCount;
 
             return PointsCount;
@@ -1070,8 +1070,8 @@ public class mmWaveService extends Service {
     }
 
     float[] flatteninput(float stack_pixel[][]) {
-        float[] input = new float[stack_size * VoxelPointX * VoxelPointY];
-        for (int i = 0; i < stack_size; i++) {
+        float[] input = new float[stack_size_count * VoxelPointX * VoxelPointY];
+        for (int i = 0; i < stack_size_count; i++) {
             for (int j = 0; j < (VoxelPointX * VoxelPointY); j++) {
                 input[(i * VoxelPointX * VoxelPointY) + j] = stack_pixel[i][j];
             }
@@ -1122,17 +1122,17 @@ public class mmWaveService extends Service {
     }
 
     float[][][] stackSlid_pixel(float pixel[][], float stack_pixel[][][], int frame_count) {
-        if (frame_count < stack_size) {
+        if (frame_count < stack_size_count) {
             stack_pixel[0][frame_count] = pixel[0];
             stack_pixel[1][frame_count] = pixel[1];
         } else {
-            float[][][] new_stack_pixel = new float[2][stack_size][VoxelPointX * VoxelPointY];
-            for (int i = 0; i < stack_size - 1; i++) {
+            float[][][] new_stack_pixel = new float[2][stack_size_count][VoxelPointX * VoxelPointY];
+            for (int i = 0; i < stack_size_count - 1; i++) {
                 new_stack_pixel[0][i] = stack_pixel[0][i + 1];  //third dim is for [X*Y points]
                 new_stack_pixel[1][i] = stack_pixel[1][i + 1];
             }
-            new_stack_pixel[0][stack_size - 1] = pixel[0];
-            new_stack_pixel[1][stack_size - 1] = pixel[1];
+            new_stack_pixel[0][stack_size_count - 1] = pixel[0];
+            new_stack_pixel[1][stack_size_count - 1] = pixel[1];
 
             stack_pixel = new_stack_pixel;
         }
