@@ -93,7 +93,7 @@ public class mmWaveService extends Service {
     private int stack_size_count = 9;
     private int number;
     private int numbertemp = -1;
-    private int count = 0;
+    private int count = 0, low_count = 0;
     private byte[] msg;
     private byte[] nowFramePointCloud;
 
@@ -529,13 +529,13 @@ public class mmWaveService extends Service {
 
         File path = new File("/sdcard/PointCLoud/");
         if (!path.exists()) {
-            Log.d(ClassName,"path not exists");
+            Log.d(ClassName, "path not exists");
             path.mkdirs();
         }
 
-        String csvfilePath = path +"/"+ Filename + ".csv";
-        String filePath = path + "/"+Filename + ".txt";
-        Log.d(ClassName,"filename:"+csvfilePath+"/"+filePath);
+        String csvfilePath = path + "/" + Filename + ".csv";
+        String filePath = path + "/" + Filename + ".txt";
+        Log.d(ClassName, "filename:" + csvfilePath + "/" + filePath);
 
         ArrayList<Integer> Target_IDList = new ArrayList<Integer>();
 
@@ -589,15 +589,22 @@ public class mmWaveService extends Service {
                 final float[][] pointcloud = BytesPoint2float(msg);
 //                Log.d(ClassName,"call pointcloud!");
                 if (pointcloud != null) {
+
+                    if (TLVPoints < 10) {
+                        Log.d(ClassName, "Points too low:" + TLVPoints);
+                        low_count += 1;
+                        continue;
+                    }
+                    count += 1;
+
+
                     float[][] pixels = voxelize(pointcloud[0], pointcloud[1], pointcloud[2], VoxelPointX, VoxelPointY, VoxelPointX);
                     stack_pixel = stackSlid_pixel(pixels, stack_pixel, count);
-//                    Log.d(ClassName,"call stack!");
-                    count += 1;
                     PointsCount = LogPointCount(TLVPoints, PointsCount, count);
 
                     Date csvLogTime = new Date();
                     String csvTime = date.format(csvLogTime);
-                    writeToCSV(pointcloud,csvTime,csvfilePath);
+                    writeToCSV(pointcloud, csvTime, csvfilePath);
 
                     if (count > stack_size_count && count % 4 == 1) {
                         float[] input1 = flatteninput(stack_pixel[0]);
@@ -613,18 +620,10 @@ public class mmWaveService extends Service {
                         final float[][] output_0 = new float[1][7];
                         outputs.put(0, output_0);
 
-//                        try {
-//                            tflite.runForMultipleInputsOutputs(inputs, outputs);
-//                        } catch (Exception e) {
-//                            Date LogTime = new Date();
-//                            String sLogTime = date.format(LogTime);
-//                            nowLog = sLogTime + " ," + "empty" + "\n";
-//                            ;
-//                            writeToFile(nowLog, filePath, true);
-//                            break;
-//                        }
+
                         tflite.runForMultipleInputsOutputs(inputs, outputs);
                         numLabel = getOutputLabelindex(output_0);
+
 
                         if (numLabel != numLabel_temp) {
 //                            Log.d(ClassName, "now:" + numLabel + " past:" + numLabel_temp);
@@ -675,9 +674,7 @@ public class mmWaveService extends Service {
                         Log.d(ClassName, "Metrix:" + logpoints);
                         nowLog = sLogTime + "Frame:" + frameNumber + " state: " + humanstates[humanstate] + " Prediction: " + numLabel + " Points: " + logpoints + "\n";
                         writeToFile(nowLog, filePath, true);
-//                        tmp = humanstates[humanstate];
-//                        tmp = FindProbIndex(output_0);
-//                        Sendsignal = false;
+
                         Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + ", fallsignal:" + fallsignal + ", result:" + numLabel);
                     }
                 }
@@ -781,18 +778,18 @@ public class mmWaveService extends Service {
 ///////////////////////////////////Parser////////////////////////////
     }
 
-    private void writeToCSV(float[][] PointCloud,String csvDate,String CSVpath) {
+    private void writeToCSV(float[][] PointCloud, String csvDate, String CSVpath) {
         File cFile = new File(CSVpath);
         StringBuilder sb;
-        try{
-            if(!cFile.exists()){
+        try {
+            if (!cFile.exists()) {
                 cFile.createNewFile();
             }
-            FileOutputStream os = new FileOutputStream(cFile,true);
+            FileOutputStream os = new FileOutputStream(cFile, true);
             sb = new StringBuilder();
 
-            try{
-                for (int i = 0; i < PointCloud[0].length;i++){
+            try {
+                for (int i = 0; i < PointCloud[0].length; i++) {
                     sb.append(csvDate).append(",");
                     sb.append(PointCloud[0][i]).append(",");
                     sb.append(PointCloud[1][i]).append(",");
@@ -804,15 +801,14 @@ public class mmWaveService extends Service {
                 os.flush();
                 os.close();
 
-            }catch (Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
 
 
-        }catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
-
 
 
     }
