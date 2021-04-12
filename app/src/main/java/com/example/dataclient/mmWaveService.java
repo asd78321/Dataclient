@@ -589,12 +589,18 @@ public class mmWaveService extends Service {
                 final float[][] pointcloud = BytesPoint2float(msg);
 //                Log.d(ClassName,"call pointcloud!");
                 if (pointcloud != null) {
+                    String nowLog = "";
+                    Date LogTime = new Date();
+                    String sLogTime = date.format(LogTime);
 
-                    if (TLVPoints < 10) {
+                    if (TLVPoints < 15) {
                         Log.d(ClassName, "Points too low:" + TLVPoints);
+                        nowLog = sLogTime + " Frame:" + frameNumber +"points too low,Not predict! state:"+humanstates[humanstate]+"\n";
+                        writeToFile(nowLog, filePath, true);
                         low_count += 1;
                         continue;
                     }
+
                     count += 1;
 
 
@@ -610,7 +616,7 @@ public class mmWaveService extends Service {
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
 
-                        String nowLog = "";
+
 
                         ByteBuffer byteinput1 = floatBuffer2byteBuffer(input1, input1.length);
                         ByteBuffer byteinput2 = floatBuffer2byteBuffer(input2, input2.length);
@@ -668,10 +674,9 @@ public class mmWaveService extends Service {
                             }
                         }
                         numLabel_temp = numLabel;
-                        Date LogTime = new Date();
-                        String sLogTime = date.format(LogTime);
+
                         int logpoints = sumArray(PointsCount);
-                        Log.d(ClassName, "Metrix:" + logpoints);
+//                        Log.d(ClassName, "Metrix:" + logpoints);
                         nowLog = sLogTime + "Frame:" + frameNumber + " state: " + humanstates[humanstate] + " Prediction: " + numLabel + " Points: " + logpoints + "\n";
                         writeToFile(nowLog, filePath, true);
 
