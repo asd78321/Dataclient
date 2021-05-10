@@ -146,7 +146,7 @@ public class mmWaveService extends Service {
     public final static int LED_DELAY_TIME = 300;
     private static int ledAction = 2;
     private Date LogStartTime = new Date();
-
+    private  static  long timer1,timer2;
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -593,9 +593,11 @@ public class mmWaveService extends Service {
                     Date LogTime = new Date();
                     String sLogTime = date.format(LogTime);
 
+                    writeToCSV(pointcloud, sLogTime, csvfilePath);
+
                     if (TLVPoints < 15) {
                         Log.d(ClassName, "Points too low:" + TLVPoints);
-                        nowLog = sLogTime + " Frame:" + frameNumber +"points too low,Not predict! state:"+humanstates[humanstate]+"\n";
+                        nowLog = sLogTime + ",Frame: " + frameNumber +"points too low,Not predict! state:"+humanstates[humanstate]+"\n";
                         writeToFile(nowLog, filePath, true);
                         low_count += 1;
                         continue;
@@ -608,11 +610,10 @@ public class mmWaveService extends Service {
                     stack_pixel = stackSlid_pixel(pixels, stack_pixel, count);
                     PointsCount = LogPointCount(TLVPoints, PointsCount, count);
 
-                    Date csvLogTime = new Date();
-                    String csvTime = date.format(csvLogTime);
-                    writeToCSV(pointcloud, csvTime, csvfilePath);
 
-                    if (count > stack_size_count && count % 4 == 1) {
+
+
+                    if (count > stack_size_count) {
                         float[] input1 = flatteninput(stack_pixel[0]);
                         float[] input2 = flatteninput(stack_pixel[1]);
 
@@ -626,9 +627,12 @@ public class mmWaveService extends Service {
                         final float[][] output_0 = new float[1][7];
                         outputs.put(0, output_0);
 
-
+                        timer1 = System.currentTimeMillis();
                         tflite.runForMultipleInputsOutputs(inputs, outputs);
                         numLabel = getOutputLabelindex(output_0);
+                        timer2 = System.currentTimeMillis();
+
+                        Log.d(ClassName,"Cost time:"+(timer2-timer1));
 
 
                         if (numLabel != numLabel_temp) {
@@ -677,7 +681,7 @@ public class mmWaveService extends Service {
 
                         int logpoints = sumArray(PointsCount);
 //                        Log.d(ClassName, "Metrix:" + logpoints);
-                        nowLog = sLogTime + "Frame:" + frameNumber + " state: " + humanstates[humanstate] + " Prediction: " + numLabel + " Points: " + logpoints + "\n";
+                        nowLog = sLogTime + ",Frame: " + frameNumber + ",state: " + humanstates[humanstate] + ",Prediction: " + numLabel + ",Points: " + logpoints + "\n";
                         writeToFile(nowLog, filePath, true);
 
                         Log.d(ClassName, "FrameNumber:" + String.valueOf(frameNumber) + ", PredictionResult:" + humanstates[humanstate] + ", fallsignal:" + fallsignal + ", result:" + numLabel);
